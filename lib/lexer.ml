@@ -31,26 +31,26 @@ let rec read_identifier_aux (lexer : t) (acc : string) : t * string =
         read_identifier_aux (forward lexer) (acc ^ Char.escaped x)
       else (lexer, acc)
 
-let read_identifier (lexer : t) : t * Token.t option =
+let read_identifier (lexer : t) : t * Token.t=
   let x = read_identifier_aux lexer "" in
   match snd x with
-  | "let" -> (fst x, Some Token.Let)
-  | "fn" -> (fst x, Some Token.Function)
-  | "true" -> (fst x, Some Token.True)
-  | "false" -> (fst x, Some Token.False)
-  | "if" -> (fst x, Some Token.If)
-  | "else" -> (fst x, Some Token.Else)
-  | "return" -> (fst x, Some Token.Return)
-  | y -> (fst x, Some (Token.Ident y))
+  | "let" -> (fst x, Token.Let)
+  | "fn" -> (fst x, Token.Function)
+  | "true" -> (fst x, Token.True)
+  | "false" -> (fst x, Token.False)
+  | "if" -> (fst x, Token.If)
+  | "else" -> (fst x, Token.Else)
+  | "return" -> (fst x, Token.Return)
+  | y -> (fst x, (Token.Ident y))
 
-let rec read_number_aux (lexer : t) (acc : string) : t * Token.t option =
+let rec read_number_aux (lexer : t) (acc : string) : t * Token.t =
   match lexer.ch with
-  | None -> (lexer, Some (Token.Int acc))
+  | None -> (lexer, (Token.Int acc))
   | Some x ->
       if is_digit x then read_number_aux (forward lexer) (acc ^ Char.escaped x)
-      else (lexer, Some (Token.Int acc))
+      else (lexer, (Token.Int acc))
 
-let read_number (lexer : t) : t * Token.t option = read_number_aux lexer ""
+let read_number (lexer : t) : t * Token.t = read_number_aux lexer ""
 
 let rec skip_whitespace (lexer : t) : t =
   match lexer.ch with
@@ -58,41 +58,38 @@ let rec skip_whitespace (lexer : t) : t =
       skip_whitespace (forward lexer)
   | _ -> lexer
 
-let next_token (lexer : t) : t * Token.t option =
+let next_token (lexer : t) : t * Token.t =
   let lexer = skip_whitespace lexer in
   match lexer.ch with
-  | None -> (forward lexer, Some Token.Eof)
+  | None -> (forward lexer, Token.Eof)
   | Some '=' ->
-      if peek_char lexer = Some '=' then (forward (forward lexer), Some Token.Eq)
-      else (forward lexer, Some Token.Assign)
-  | Some '+' -> (forward lexer, Some Token.Plus)
-  | Some '-' -> (forward lexer, Some Token.Minus)
+      if peek_char lexer = Some '=' then (forward (forward lexer), Token.Eq)
+      else (forward lexer, Token.Assign)
+  | Some '+' -> (forward lexer, Token.Plus)
+  | Some '-' -> (forward lexer, Token.Minus)
   | Some '!' ->
       if peek_char lexer = Some '=' then
-        (forward (forward lexer), Some Token.Not_eq)
-      else (forward lexer, Some Token.Bang)
-  | Some '*' -> (forward lexer, Some Token.Asterisk)
-  | Some '/' -> (forward lexer, Some Token.Slash)
-  | Some '<' -> (forward lexer, Some Token.LT)
-  | Some '>' -> (forward lexer, Some Token.GT)
-  | Some ',' -> (forward lexer, Some Token.Comma)
-  | Some ';' -> (forward lexer, Some Token.Semicolon)
-  | Some '(' -> (forward lexer, Some Token.LParen)
-  | Some ')' -> (forward lexer, Some Token.RParen)
-  | Some '{' -> (forward lexer, Some Token.LBrace)
-  | Some '}' -> (forward lexer, Some Token.RBrace)
+        (forward (forward lexer), Token.Not_eq)
+      else (forward lexer, Token.Bang)
+  | Some '*' -> (forward lexer, Token.Asterisk)
+  | Some '/' -> (forward lexer, Token.Slash)
+  | Some '<' -> (forward lexer, Token.LT)
+  | Some '>' -> (forward lexer, Token.GT)
+  | Some ',' -> (forward lexer, Token.Comma)
+  | Some ';' -> (forward lexer, Token.Semicolon)
+  | Some '(' -> (forward lexer, Token.LParen)
+  | Some ')' -> (forward lexer, Token.RParen)
+  | Some '{' -> (forward lexer, Token.LBrace)
+  | Some '}' -> (forward lexer, Token.RBrace)
   | Some x ->
       if is_char x then read_identifier lexer
       else if is_digit x then read_number lexer
-      else (forward lexer, Some Token.Illegal)
+      else (forward lexer, Token.Illegal)
 
 let rec show_aux (lexer : t) (acc : string) : string =
   let lexer, tok = next_token lexer in
   match tok with
-  | None -> acc
-  | Some x ->
-      match x with
-      | Token.Eof -> acc
-      | _ -> show_aux lexer (acc ^ Token.to_string x)
+  | Token.Eof -> acc
+  | x -> show_aux lexer (acc ^ Token.to_string x)
 
 let show (lexer : t) = show_aux lexer ""

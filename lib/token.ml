@@ -60,3 +60,33 @@ let to_string (token : t) =
   | Else -> "Else\n"
   | Return -> "Return\n"
   | Eof -> "Eof\n"
+
+let to_value (token : t) =
+  match token with
+  | Illegal -> "Illegal\n"
+  | Ident x -> x
+  | Int x -> x
+  | Assign -> "="
+  | Plus -> "+"
+  | Minus -> "-"
+  | Bang -> "!"
+  | Asterisk -> "*"
+  | Slash -> "/"
+  | LT -> "<"
+  | GT -> ">"
+  | Eq -> "=="
+  | Not_eq -> "!="
+  | Comma -> ","
+  | Semicolon -> ";"
+  | LParen -> "("
+  | RParen -> ")"
+  | LBrace -> "{"
+  | RBrace -> "}"
+  | Function -> "func"
+  | Let -> "let"
+  | True -> "true"
+  | False -> "false"
+  | If -> "if"
+  | Else -> "else"
+  | Return -> "return"
+  | Eof -> "Eof\n"
