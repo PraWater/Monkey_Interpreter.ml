@@ -31,7 +31,7 @@ let rec read_identifier_aux (lexer : t) (acc : string) : t * string =
         read_identifier_aux (forward lexer) (acc ^ Char.escaped x)
       else (lexer, acc)
 
-let read_identifier (lexer : t) : t * Token.t=
+let read_identifier (lexer : t) : t * Token.t =
   let x = read_identifier_aux lexer "" in
   match snd x with
   | "let" -> (fst x, Token.Let)
@@ -41,14 +41,14 @@ let read_identifier (lexer : t) : t * Token.t=
   | "if" -> (fst x, Token.If)
   | "else" -> (fst x, Token.Else)
   | "return" -> (fst x, Token.Return)
-  | y -> (fst x, (Token.Ident y))
+  | y -> (fst x, Token.Ident y)
 
 let rec read_number_aux (lexer : t) (acc : string) : t * Token.t =
   match lexer.ch with
-  | None -> (lexer, (Token.Int acc))
+  | None -> (lexer, Token.Int acc)
   | Some x ->
       if is_digit x then read_number_aux (forward lexer) (acc ^ Char.escaped x)
-      else (lexer, (Token.Int acc))
+      else (lexer, Token.Int acc)
 
 let read_number (lexer : t) : t * Token.t = read_number_aux lexer ""
 
@@ -68,8 +68,7 @@ let next_token (lexer : t) : t * Token.t =
   | Some '+' -> (forward lexer, Token.Plus)
   | Some '-' -> (forward lexer, Token.Minus)
   | Some '!' ->
-      if peek_char lexer = Some '=' then
-        (forward (forward lexer), Token.Not_eq)
+      if peek_char lexer = Some '=' then (forward (forward lexer), Token.Not_eq)
       else (forward lexer, Token.Bang)
   | Some '*' -> (forward lexer, Token.Asterisk)
   | Some '/' -> (forward lexer, Token.Slash)

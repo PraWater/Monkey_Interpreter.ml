@@ -84,7 +84,7 @@ and parse_if_expression (parser : t) : t * Ast.expression =
   in
   (parser, Ast.IfExpression { condition; consequence; alternative })
 
-and parse_operator (token : Token.t) : string = " " ^ Token.to_value token ^ " "
+and parse_operator (token : Token.t) : string = Token.to_value token
 
 and r_parse_infix (parser : t) (exp : Ast.expression) (precedence : int) :
     t * Ast.expression =
