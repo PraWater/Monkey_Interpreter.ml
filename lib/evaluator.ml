@@ -57,6 +57,9 @@ and eval_expression (exp : Ast.expression) (env : Env.t) : Object.t * Env.t =
   match exp with
   | Ast.IntLiteral value -> (Object.Integer value, env)
   | Ast.BoolLiteral value -> (bool_to_boolean_object value, env)
+  | Ast.StringLiteral value -> (Object.String value, env)
+  | Ast.ArrayLiteral exps -> (eval_array_literal exps env, env)
+  | Ast.HashLiteral { keys; values } -> (eval_hash_literal keys values env, env)
   | Ast.PrefixExpression { operator = "!"; right } ->
       eval_bang_expression right env
   | Ast.PrefixExpression { operator = "-"; right } ->
@@ -65,14 +68,58 @@ and eval_expression (exp : Ast.expression) (env : Env.t) : Object.t * Env.t =
       eval_infix_expression operator left right env
   | Ast.IfExpression { condition; consequence; alternative } ->
       eval_if_expression condition consequence alternative env
-  | Ast.Identifier name -> (Env.get name env, env)
+  | Ast.Identifier name -> (eval_identifier name env, env)
   | Ast.FunctionLiteral { parameters; body } ->
       (Object.Function { parameters; body }, env)
   | Ast.Call { fn; arguments } -> apply_function fn arguments env
+  | Ast.IndexExpression { left; index } ->
+      (eval_index_expression left index env, env)
   | _ -> failwith ("Couldn't eval expression: " ^ Ast.exp_to_string exp)
 
 and bool_to_boolean_object (value : bool) : Object.t =
   if value then true_object else false_object
+
+and eval_array_literal (exps : Ast.expression list) (env : Env.t) : Object.t =
+  let elems = List.map (function exp -> fst (eval_expression exp env)) exps in
+  Object.Array elems
+
+and eval_hash_literal (keys : Ast.expression list)
+    (values : Ast.expression list) (env : Env.t) : Object.t =
+  let rec r_eval_hash_literal (keys : Object.t list) (values : Object.t list)
+      (hash : Object.t) : Object.t =
+    match (keys, values, hash) with
+    | [], [], Object.Hash _ -> hash
+    | h1 :: t1, h2 :: t2, Object.Hash h ->
+        let hash =
+          match h1 with
+          | Object.String key ->
+              Object.Hash
+                { h with stringMap = Object.StringMap.add key h2 h.stringMap }
+          | Object.Integer key ->
+              Object.Hash { h with intMap = Object.IntMap.add key h2 h.intMap }
+          | Object.Boolean true -> Object.Hash { h with trueItem = h2 }
+          | Object.Boolean false -> Object.Hash { h with falseItem = h2 }
+          | _ -> failwith "Unexpected type for key in hash"
+        in
+        r_eval_hash_literal t1 t2 hash
+    | _ -> failwith "Hash literal error"
+  in
+  let keys = List.map (function exp -> fst (eval_expression exp env)) keys in
+  let values =
+    List.map (function exp -> fst (eval_expression exp env)) values
+  in
+  let hash =
+    Object.Hash
+      {
+        stringMap = Object.StringMap.empty;
+        intMap = Object.IntMap.empty;
+        trueItem = null_object;
+        falseItem = null_object;
+        keys;
+        values;
+      }
+  in
+  r_eval_hash_literal keys values hash
 
 and eval_bang_expression (right : Ast.expression) (env : Env.t) :
     Object.t * Env.t =
@@ -103,7 +150,11 @@ and eval_infix_expression (operator : string) (left : Ast.expression)
     | ">", Object.Integer x, Object.Integer y -> bool_to_boolean_object (x > y)
     | "==", _, _ -> bool_to_boolean_object (left = right)
     | "!=", _, _ -> bool_to_boolean_object (left != right)
-    | _ -> failwith "infix"
+    | "+", Object.String x, Object.String y -> Object.String (x ^ y)
+    | _ ->
+        failwith
+          ("Infix not defined for: " ^ operator ^ Object.inspect left
+         ^ Object.inspect right)
   in
   (result, env)
 
@@ -115,34 +166,46 @@ and eval_if_expression (condition : Ast.expression)
     eval_statement consequence env
   else eval_statement alternative env
 
+and eval_identifier (name : string) (env : Env.t) : Object.t =
+  match (Env.get name env, Object.get_builtin name) with
+  | Some obj, _ -> obj
+  | _, Some builtin -> builtin
+  | None, None -> failwith (name ^ " not found in env and builtins")
+
 and apply_function (fn : Ast.expression) (arguments : Ast.expression list)
     (env : Env.t) : Object.t * Env.t =
   let fn_obj, env = eval_expression fn env in
-  let body, parameters =
-    match fn_obj with
-    | Object.Function { body; parameters } -> (body, parameters)
-    | _ -> failwith (Ast.exp_to_string fn ^ " not a function")
-  in
-  let extended_env = extend_function_env parameters arguments env in
-  let evaluated = fst (eval_statement body extended_env) in
-  (unwrap_return_value evaluated, env)
+  match fn_obj with
+  | Object.Function { body; parameters } ->
+      let extended_env = extend_function_env parameters arguments env in
+      let evaluated = fst (eval_statement body extended_env) in
+      (unwrap_return_value evaluated, env)
+  | Object.Builtin blt -> (
+      match blt with
+      | Object.Len -> apply_len arguments env
+      | Object.First -> apply_first arguments env
+      | Object.Last -> apply_last arguments env
+      | Object.Rest -> apply_rest arguments env
+      | Object.Push -> apply_push arguments env
+      | Object.Puts -> apply_puts arguments env)
+  | _ -> failwith (Ast.exp_to_string fn ^ " not a function")
 
 and extend_function_env (parameters : Ast.expression list)
     (arguments : Ast.expression list) (env : Env.t) : Env.t =
   let extended_env = Env.new_enclosed_env env in
   let rec r_extend (parameters : Ast.expression list)
-      (arguments : Ast.expression list) (env : Env.t) : Env.t =
+      (arguments : Ast.expression list) (extended_env : Env.t) : Env.t =
     match (parameters, arguments) with
-    | [], [] -> env
+    | [], [] -> extended_env
     | h1 :: t1, h2 :: t2 ->
         let parameter =
           match h1 with
           | Ast.Identifier name -> name
           | _ -> failwith (Ast.exp_to_string h1 ^ " is not Identifier")
         in
-        let argument, env = eval_expression h2 env in
-        let env = Env.set parameter argument env in
-        r_extend t1 t2 env
+        let argument, _ = eval_expression h2 env in
+        let extended_env = Env.set parameter argument extended_env in
+        r_extend t1 t2 extended_env
     | _, _ ->
         failwith "Number of parameters and number of arguments are not equal"
   in
@@ -150,3 +213,108 @@ and extend_function_env (parameters : Ast.expression list)
 
 and unwrap_return_value (obj : Object.t) : Object.t =
   match obj with Object.ReturnValue value -> value | _ -> obj
+
+and apply_len (arguments : Ast.expression list) (env : Env.t) : Object.t * Env.t
+    =
+  if List.length arguments = 1 then
+    let arg = List.nth arguments 0 in
+    let arg, env = eval_expression arg env in
+    match arg with
+    | Object.String str -> (Object.Integer (String.length str), env)
+    | Object.Array arr -> (Object.Integer (List.length arr), env)
+    | _ -> failwith "Not a string/array"
+  else
+    failwith
+      ("Wrong number of arguments for len: "
+      ^ string_of_int (List.length arguments))
+
+and apply_first (arguments : Ast.expression list) (env : Env.t) :
+    Object.t * Env.t =
+  if List.length arguments = 1 then
+    let arg = List.nth arguments 0 in
+    (eval_index_expression arg (Ast.IntLiteral 0) env, env)
+  else
+    failwith
+      ("Wrong number of arguments for first: "
+      ^ string_of_int (List.length arguments))
+
+and apply_last (arguments : Ast.expression list) (env : Env.t) :
+    Object.t * Env.t =
+  if List.length arguments = 1 then
+    let arg = List.nth arguments 0 in
+    let arg_obj, _ = eval_expression arg env in
+    match arg_obj with
+    | Object.Array arr -> (List.nth arr (List.length arr - 1), env)
+    | _ -> failwith ("Not an array: " ^ Ast.exp_to_string arg)
+  else
+    failwith
+      ("Wrong number of arguments for last: "
+      ^ string_of_int (List.length arguments))
+
+and apply_rest (arguments : Ast.expression list) (env : Env.t) :
+    Object.t * Env.t =
+  if List.length arguments = 1 then
+    let arg = List.nth arguments 0 in
+    let arg_obj, _ = eval_expression arg env in
+    match arg_obj with
+    | Object.Array arr -> (Object.Array (List.tl arr), env)
+    | _ -> failwith ("Not an array: " ^ Ast.exp_to_string arg)
+  else
+    failwith
+      ("Wrong number of arguments for rest: "
+      ^ string_of_int (List.length arguments))
+
+and apply_push (arguments : Ast.expression list) (env : Env.t) :
+    Object.t * Env.t =
+  if List.length arguments = 2 then
+    let arr = List.nth arguments 0 in
+    let arr_obj, _ = eval_expression arr env in
+    let ele = List.nth arguments 1 in
+    let ele, _ = eval_expression ele env in
+    match arr_obj with
+    | Object.Array arr -> (Object.Array (arr @ [ ele ]), env)
+    | _ -> failwith ("Not an array: " ^ Ast.exp_to_string arr)
+  else
+    failwith
+      ("Wrong number of arguments for push: "
+      ^ string_of_int (List.length arguments))
+
+and apply_puts (arguments : Ast.expression list) (env : Env.t) :
+    Object.t * Env.t =
+  let rec r_apply_puts (arguments : Object.t list) (env : Env.t) :
+      Object.t * Env.t =
+    match arguments with
+    | [] -> (null_object, env)
+    | h :: t ->
+        let () = print_string (Object.inspect h) in
+        r_apply_puts t env
+  in
+  let arguments =
+    List.map (function exp -> fst (eval_expression exp env)) arguments
+  in
+  r_apply_puts arguments env
+
+and eval_index_expression (arr : Ast.expression) (index : Ast.expression)
+    (env : Env.t) : Object.t =
+  let arr_obj, _ = eval_expression arr env in
+  let index_obj, _ = eval_expression index env in
+  match (arr_obj, index_obj) with
+  | Object.Array arr, Object.Integer index -> (
+      match List.nth_opt arr index with
+      | Some value -> value
+      | None -> null_object)
+  | Object.Hash h, Object.Integer index -> (
+      match Object.IntMap.find_opt index h.intMap with
+      | Some value -> value
+      | None -> null_object)
+  | Object.Hash h, Object.String index -> (
+      match Object.StringMap.find_opt index h.stringMap with
+      | Some value -> value
+      | None -> null_object)
+  | Object.Hash h, Object.Boolean true -> h.trueItem
+  | Object.Hash h, Object.Boolean false -> h.falseItem
+  | Object.Array _, _ ->
+      failwith ("Index is not an integer: " ^ Ast.exp_to_string index)
+  | Object.Hash _, _ ->
+      failwith ("Index is not supported: " ^ Ast.exp_to_string index)
+  | _, _ -> failwith ("Index not supported for: " ^ Ast.exp_to_string arr)

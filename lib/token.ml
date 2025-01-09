@@ -4,6 +4,7 @@ type t =
   (*Identifiers + Literals*)
   | Ident of string
   | Int of string
+  | String of string
   (*Operators*)
   | Assign
   | Plus
@@ -18,10 +19,13 @@ type t =
   (*Delimiters*)
   | Comma
   | Semicolon
+  | Colon
   | LParen
   | RParen
   | LBrace
   | RBrace
+  | LBracket
+  | RBracket
   (*Keywords*)
   | Function
   | Let
@@ -36,6 +40,7 @@ let to_string (token : t) =
   | Illegal -> "Illegal\n"
   | Ident x -> "Ident " ^ x ^ "\n"
   | Int x -> "Int " ^ x ^ "\n"
+  | String x -> "String " ^ x ^ "\n"
   | Assign -> "Assign\n"
   | Plus -> "Plus\n"
   | Minus -> "Minus\n"
@@ -48,10 +53,13 @@ let to_string (token : t) =
   | Not_eq -> "Not_eq\n"
   | Comma -> "Comma\n"
   | Semicolon -> "Semicolon\n"
+  | Colon -> "Colon\n"
   | LParen -> "LParen\n"
   | RParen -> "RParen\n"
   | LBrace -> "LBrace\n"
   | RBrace -> "RBrace\n"
+  | LBracket -> "LBracket\n"
+  | RBracket -> "RBracket\n"
   | Function -> "Function\n"
   | Let -> "Let\n"
   | True -> "True\n"
@@ -66,6 +74,7 @@ let to_value (token : t) =
   | Illegal -> "Illegal\n"
   | Ident x -> x
   | Int x -> x
+  | String x -> x
   | Assign -> "="
   | Plus -> "+"
   | Minus -> "-"
@@ -78,10 +87,13 @@ let to_value (token : t) =
   | Not_eq -> "!="
   | Comma -> ","
   | Semicolon -> ";"
+  | Colon -> ":"
   | LParen -> "("
   | RParen -> ")"
   | LBrace -> "{"
   | RBrace -> "}"
+  | LBracket -> "["
+  | RBracket -> "]"
   | Function -> "func"
   | Let -> "let"
   | True -> "true"

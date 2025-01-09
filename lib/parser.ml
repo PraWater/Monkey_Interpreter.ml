@@ -37,6 +37,7 @@ let get_precedence (token : Token.t) : int =
   | Token.Slash | Token.Asterisk -> 5
   | Token.LParen -> 6
   | Token.LBrace -> 8
+  | Token.LBracket -> 9
   | _ -> 1
 
 let rec parse_expression (parser : t) (precedence : int) : t * Ast.expression =
@@ -51,8 +52,11 @@ and parse_prefix (parser : t) : t * Ast.expression =
   | Token.True -> (parser, Ast.BoolLiteral true)
   | Token.False -> (parser, Ast.BoolLiteral false)
   | Token.LParen -> parse_grouped_expression parser
+  | Token.LBracket -> parse_array_literal parser
+  | Token.LBrace -> parse_hash_literal parser
   | Token.If -> parse_if_expression parser
   | Token.Function -> parse_function_literal parser
+  | Token.String value -> (parser, Ast.StringLiteral value)
   | _ ->
       failwith ("Not implemented for token " ^ Token.to_value parser.curr_token)
 
@@ -67,6 +71,42 @@ and parse_grouped_expression (parser : t) : t * Ast.expression =
   let parser, exp = parse_expression parser least_precedence in
   let parser = peek_advance parser Token.RParen in
   (parser, exp)
+
+and parse_array_literal (parser : t) : t * Ast.expression =
+  let parser = advance parser in
+  let parser, exps = parse_expression_list parser [] Token.RBracket in
+  (parser, Ast.ArrayLiteral exps)
+
+and parse_hash_literal (parser : t) : t * Ast.expression =
+  let rec r_parse_hash_literal (parser : t) (keys : Ast.expression list)
+      (values : Ast.expression list) :
+      t * Ast.expression list * Ast.expression list =
+    if parser.curr_token = Token.RBrace || parser.curr_token = Token.Eof then
+      (parser, List.rev keys, List.rev values)
+    else
+      let parser, key = parse_expression parser least_precedence in
+      let parser = peek_advance parser Token.Colon in
+      let parser = advance parser in
+      let parser, value = parse_expression parser least_precedence in
+      let parser = advance parser in
+      let parser =
+        if parser.curr_token = Token.Comma then advance parser else parser
+      in
+      r_parse_hash_literal parser (key :: keys) (value :: values)
+  in
+  let parser = advance parser in
+  let parser, keys, values = r_parse_hash_literal parser [] [] in
+  (parser, Ast.HashLiteral { keys; values })
+
+and parse_expression_list (parser : t) (acc : Ast.expression list)
+    (tok : Token.t) : t * Ast.expression list =
+  if parser.curr_token = tok || parser.curr_token = Token.Eof then (parser, acc)
+  else
+    let parser, expression = parse_expression parser least_precedence in
+    let parser =
+      if parser.peek_token = Token.Comma then advance parser else parser
+    in
+    parse_expression_list (advance parser) (acc @ [ expression ]) tok
 
 and parse_if_expression (parser : t) : t * Ast.expression =
   let parser = peek_advance parser Token.LParen in
@@ -101,6 +141,7 @@ and r_parse_infix (parser : t) (exp : Ast.expression) (precedence : int) :
 and parse_infix (parser : t) (exp : Ast.expression) : t * Ast.expression =
   match parser.curr_token with
   | Token.LParen -> parse_call_expression parser exp
+  | Token.LBracket -> parse_index_expression parser exp
   | _ -> parse_infix_expression parser exp
 
 and parse_infix_expression (parser : t) (left : Ast.expression) :
@@ -135,23 +176,19 @@ and parse_function_literal (parser : t) : t * Ast.expression =
 
 and parse_arguments (parser : t) : t * Ast.expression list =
   let parser = advance parser in
-  let rec r_parse_arguments (parser : t) (acc : Ast.expression list) :
-      t * Ast.expression list =
-    if parser.curr_token = Token.RParen || parser.curr_token = Token.Eof then
-      (parser, acc)
-    else
-      let parser, expression = parse_expression parser least_precedence in
-      let parser =
-        if parser.peek_token = Token.Comma then advance parser else parser
-      in
-      r_parse_arguments (advance parser) (acc @ [ expression ])
-  in
-  r_parse_arguments parser []
+  parse_expression_list parser [] Token.RParen
 
 and parse_call_expression (parser : t) (fn : Ast.expression) :
     t * Ast.expression =
   let parser, arguments = parse_arguments parser in
   (parser, Ast.Call { fn; arguments })
+
+and parse_index_expression (parser : t) (left : Ast.expression) :
+    t * Ast.expression =
+  let parser = advance parser in
+  let parser, index = parse_expression parser least_precedence in
+  let parser = peek_advance parser Token.RBracket in
+  (parser, Ast.IndexExpression { left; index })
 
 and parse_let_statement (parser : t) : t * Ast.statement =
   let parser = advance parser in
@@ -199,14 +236,15 @@ and parse_statement (parser : t) : t * Ast.statement =
   | Token.Return -> parse_return_statement parser
   | _ -> parse_expression_statement parser
 
-and parse_program_aux (parser : t) (program : Ast.program) : t * Ast.program =
-  let parser, statement = parse_statement parser in
-  if statement = Ast.Nil then (parser, program)
-  else
-    let statements = program.statements @ [ statement ] in
-    parse_program_aux parser Ast.{ statements }
-
 let parse_program (parser : t) : t * Ast.program =
+  let rec parse_program_aux (parser : t) (program : Ast.program) :
+      t * Ast.program =
+    let parser, statement = parse_statement parser in
+    if statement = Ast.Nil then (parser, program)
+    else
+      let statements = program.statements @ [ statement ] in
+      parse_program_aux parser Ast.{ statements }
+  in
   let statements = [] in
   parse_program_aux parser Ast.{ statements }
 

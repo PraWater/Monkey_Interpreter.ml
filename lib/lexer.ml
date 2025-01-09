@@ -23,15 +23,15 @@ let is_char (ch : char) : bool =
 
 let is_digit (ch : char) : bool = ch >= '0' && ch <= '9'
 
-let rec read_identifier_aux (lexer : t) (acc : string) : t * string =
-  match lexer.ch with
-  | None -> (lexer, acc)
-  | Some x ->
-      if is_char x then
-        read_identifier_aux (forward lexer) (acc ^ Char.escaped x)
-      else (lexer, acc)
-
 let read_identifier (lexer : t) : t * Token.t =
+  let rec read_identifier_aux (lexer : t) (acc : string) : t * string =
+    match lexer.ch with
+    | None -> (lexer, acc)
+    | Some x ->
+        if is_char x then
+          read_identifier_aux (forward lexer) (acc ^ Char.escaped x)
+        else (lexer, acc)
+  in
   let x = read_identifier_aux lexer "" in
   match snd x with
   | "let" -> (fst x, Token.Let)
@@ -43,14 +43,24 @@ let read_identifier (lexer : t) : t * Token.t =
   | "return" -> (fst x, Token.Return)
   | y -> (fst x, Token.Ident y)
 
-let rec read_number_aux (lexer : t) (acc : string) : t * Token.t =
-  match lexer.ch with
-  | None -> (lexer, Token.Int acc)
-  | Some x ->
-      if is_digit x then read_number_aux (forward lexer) (acc ^ Char.escaped x)
-      else (lexer, Token.Int acc)
+let read_number (lexer : t) : t * Token.t =
+  let rec read_number_aux (lexer : t) (acc : string) : t * Token.t =
+    match lexer.ch with
+    | None -> (lexer, Token.Int acc)
+    | Some x ->
+        if is_digit x then read_number_aux (forward lexer) (acc ^ Char.escaped x)
+        else (lexer, Token.Int acc)
+  in
+  read_number_aux lexer ""
 
-let read_number (lexer : t) : t * Token.t = read_number_aux lexer ""
+let read_string (lexer : t) : t * Token.t =
+  let rec read_string_aux (lexer : t) (acc : string) : t * Token.t =
+    match lexer.ch with
+    | None | Some '"' -> (forward lexer, Token.String acc)
+    | Some x -> read_string_aux (forward lexer) (acc ^ Char.escaped x)
+  in
+  let lexer = forward lexer in
+  read_string_aux lexer ""
 
 let rec skip_whitespace (lexer : t) : t =
   match lexer.ch with
@@ -76,19 +86,24 @@ let next_token (lexer : t) : t * Token.t =
   | Some '>' -> (forward lexer, Token.GT)
   | Some ',' -> (forward lexer, Token.Comma)
   | Some ';' -> (forward lexer, Token.Semicolon)
+  | Some ':' -> (forward lexer, Token.Colon)
   | Some '(' -> (forward lexer, Token.LParen)
   | Some ')' -> (forward lexer, Token.RParen)
   | Some '{' -> (forward lexer, Token.LBrace)
   | Some '}' -> (forward lexer, Token.RBrace)
+  | Some '[' -> (forward lexer, Token.LBracket)
+  | Some ']' -> (forward lexer, Token.RBracket)
+  | Some '"' -> read_string lexer
   | Some x ->
       if is_char x then read_identifier lexer
       else if is_digit x then read_number lexer
       else (forward lexer, Token.Illegal)
 
-let rec show_aux (lexer : t) (acc : string) : string =
-  let lexer, tok = next_token lexer in
-  match tok with
-  | Token.Eof -> acc
-  | x -> show_aux lexer (acc ^ Token.to_string x)
-
-let show (lexer : t) = show_aux lexer ""
+let show (lexer : t) =
+  let rec show_aux (lexer : t) (acc : string) : string =
+    let lexer, tok = next_token lexer in
+    match tok with
+    | Token.Eof -> acc
+    | x -> show_aux lexer (acc ^ Token.to_string x)
+  in
+  show_aux lexer ""
