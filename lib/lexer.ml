@@ -68,7 +68,13 @@ let rec skip_whitespace (lexer : t) : t =
       skip_whitespace (forward lexer)
   | _ -> lexer
 
-let next_token (lexer : t) : t * Token.t =
+let rec skip_past (lexer : t) (ch : char) : t =
+  match lexer.ch with
+  | None -> lexer
+  | Some x when x = ch -> forward lexer
+  | Some _ -> skip_past (forward lexer) ch
+
+let rec next_token (lexer : t) : t * Token.t =
   let lexer = skip_whitespace lexer in
   match lexer.ch with
   | None -> (forward lexer, Token.Eof)
@@ -94,6 +100,7 @@ let next_token (lexer : t) : t * Token.t =
   | Some '[' -> (forward lexer, Token.LBracket)
   | Some ']' -> (forward lexer, Token.RBracket)
   | Some '"' -> read_string lexer
+  | Some '#' -> next_token (skip_past lexer '\n')
   | Some x ->
       if is_char x then read_identifier lexer
       else if is_digit x then read_number lexer
