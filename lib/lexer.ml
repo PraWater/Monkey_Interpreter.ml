@@ -32,16 +32,17 @@ let read_identifier (lexer : t) : t * Token.t =
           read_identifier_aux (forward lexer) (acc ^ Char.escaped x)
         else (lexer, acc)
   in
-  let x = read_identifier_aux lexer "" in
-  match snd x with
-  | "let" -> (fst x, Token.Let)
-  | "fn" -> (fst x, Token.Function)
-  | "true" -> (fst x, Token.True)
-  | "false" -> (fst x, Token.False)
-  | "if" -> (fst x, Token.If)
-  | "else" -> (fst x, Token.Else)
-  | "return" -> (fst x, Token.Return)
-  | y -> (fst x, Token.Ident y)
+  let lexer, value = read_identifier_aux lexer "" in
+  match value with
+  | "let" -> (lexer, Token.Let)
+  | "fn" -> (lexer, Token.Function)
+  | "true" -> (lexer, Token.True)
+  | "false" -> (lexer, Token.False)
+  | "if" -> (lexer, Token.If)
+  | "else" -> (lexer, Token.Else)
+  | "return" -> (lexer, Token.Return)
+  | "macro" -> (lexer, Token.Macro)
+  | y -> (lexer, Token.Ident y)
 
 let read_number (lexer : t) : t * Token.t =
   let rec read_number_aux (lexer : t) (acc : string) : t * Token.t =

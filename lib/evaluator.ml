@@ -72,6 +72,16 @@ and eval_expression (exp : Ast.expression) (env : Env.t) : Object.t * Env.t =
   | Ast.FunctionLiteral { parameters; body } ->
       (Object.Function { parameters; body }, env)
   | Ast.Call { fn; arguments } -> apply_function fn arguments env
+  | Ast.QuoteExpression exp ->
+      let modify_func (env : Env.t) (exp : Ast.expression) : Ast.expression =
+        match exp with
+        | Ast.UnquoteExpression exp ->
+            let obj, _ = eval_expression exp env in
+            Object.object_to_ast_expression obj
+        | _ -> exp
+      in
+      let exp = Ast.modify_expression (modify_func env) exp in
+      (Object.Quote exp, env)
   | Ast.IndexExpression { left; index } ->
       (eval_index_expression left index env, env)
   | _ -> failwith ("Couldn't eval expression: " ^ Ast.exp_to_string exp)
@@ -134,7 +144,7 @@ and eval_minus_expression (right : Ast.expression) (env : Env.t) :
   let right, env = eval_expression right env in
   match right with
   | Object.Integer value -> (Object.Integer (-value), env)
-  | _ -> failwith ("Unexpected for minux operator: " ^ Object.inspect right)
+  | _ -> failwith ("Unexpected for minus operator: " ^ Object.inspect right)
 
 and eval_infix_expression (operator : string) (left : Ast.expression)
     (right : Ast.expression) (env : Env.t) : Object.t * Env.t =
@@ -318,3 +328,61 @@ and eval_index_expression (arr : Ast.expression) (index : Ast.expression)
   | Object.Hash _, _ ->
       failwith ("Index is not supported: " ^ Ast.exp_to_string index)
   | _, _ -> failwith ("Index not supported for: " ^ Ast.exp_to_string arr)
+
+and define_macros (prog : Ast.program) (env : Env.t) : Ast.program * Env.t =
+  let rec r_define_macros (stms : Ast.statement list) (env : Env.t) :
+      Ast.statement list * Env.t =
+    match stms with
+    | h :: t -> (
+        let stms, env = r_define_macros t env in
+        match h with
+        | Ast.Let { name; value = Ast.MacroLiteral { parameters; body } } ->
+            let name = Ast.exp_to_string name in
+            let macro_obj = Object.Macro { parameters; body } in
+            let env = Env.set name macro_obj env in
+            (stms, env)
+        | _ -> (h :: stms, env))
+    | [] -> (stms, env)
+  in
+  let stms, env = r_define_macros prog.statements env in
+  (Ast.{ statements = stms }, env)
+
+and expand_macros (prog : Ast.program) (env : Env.t) : Ast.program =
+  let modify_func (exp : Ast.expression) : Ast.expression =
+    match exp with
+    | Ast.Call { fn; arguments } -> (
+        let obj, _ = eval_expression fn env in
+        match obj with
+        | Object.Macro { parameters; body } -> (
+            let arguments =
+              List.map (function arg -> Object.Quote arg) arguments
+            in
+            let extended_env = extend_macro_env parameters arguments env in
+            let evaluated, _ = eval_statement body extended_env in
+            match evaluated with
+            | Object.Quote exp -> exp
+            | _ -> failwith "We only support returning AST-nodes from macros")
+        | _ -> exp)
+    | _ -> exp
+  in
+  Ast.modify_program modify_func prog
+
+and extend_macro_env (parameters : Ast.expression list)
+    (arguments : Object.t list) (env : Env.t) =
+  let extended_env = Env.new_enclosed_env env in
+  let rec r_extend (parameters : Ast.expression list)
+      (arguments : Object.t list) (extended_env : Env.t) : Env.t =
+    match (parameters, arguments) with
+    | [], [] -> extended_env
+    | h1 :: t1, h2 :: t2 ->
+        let parameter =
+          match h1 with
+          | Ast.Identifier name -> name
+          | _ -> failwith (Ast.exp_to_string h1 ^ " is not Identifier")
+        in
+        let extended_env = Env.set parameter h2 extended_env in
+        r_extend t1 t2 extended_env
+    | _, _ ->
+        failwith "Number of parameters and number of arguments are not equal"
+  in
+  r_extend parameters arguments extended_env

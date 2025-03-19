@@ -56,6 +56,7 @@ and parse_prefix (parser : t) : t * Ast.expression =
   | Token.LBrace -> parse_hash_literal parser
   | Token.If -> parse_if_expression parser
   | Token.Function -> parse_function_literal parser
+  | Token.Macro -> parse_macro_literal parser
   | Token.String value -> (parser, Ast.StringLiteral value)
   | _ ->
       failwith ("Not implemented for token " ^ Token.to_value parser.curr_token)
@@ -139,10 +140,12 @@ and r_parse_infix (parser : t) (exp : Ast.expression) (precedence : int) :
     r_parse_infix parser exp precedence
 
 and parse_infix (parser : t) (exp : Ast.expression) : t * Ast.expression =
-  match parser.curr_token with
-  | Token.LParen -> parse_call_expression parser exp
-  | Token.LBracket -> parse_index_expression parser exp
-  | _ -> parse_infix_expression parser exp
+  match (parser.curr_token, exp) with
+  | Token.LParen, Ast.Identifier "quote" -> parse_quote_expression parser
+  | Token.LParen, Ast.Identifier "unquote" -> parse_unquote_expression parser
+  | Token.LParen, _ -> parse_call_expression parser exp
+  | Token.LBracket, _ -> parse_index_expression parser exp
+  | _, _ -> parse_infix_expression parser exp
 
 and parse_infix_expression (parser : t) (left : Ast.expression) :
     t * Ast.expression =
@@ -174,6 +177,13 @@ and parse_function_literal (parser : t) : t * Ast.expression =
   let parser, body = parse_block_statement parser in
   (parser, Ast.FunctionLiteral { parameters; body })
 
+and parse_macro_literal (parser : t) : t * Ast.expression =
+  let parser = peek_advance parser Token.LParen in
+  let parser, parameters = parse_parameters parser in
+  let parser = peek_advance parser Token.LBrace in
+  let parser, body = parse_block_statement parser in
+  (parser, Ast.MacroLiteral { parameters; body })
+
 and parse_arguments (parser : t) : t * Ast.expression list =
   let parser = advance parser in
   parse_expression_list parser [] Token.RParen
@@ -182,6 +192,18 @@ and parse_call_expression (parser : t) (fn : Ast.expression) :
     t * Ast.expression =
   let parser, arguments = parse_arguments parser in
   (parser, Ast.Call { fn; arguments })
+
+and parse_quote_expression (parser : t) : t * Ast.expression =
+  let parser = advance parser in
+  let parser, exp = parse_expression parser least_precedence in
+  let parser = peek_advance parser Token.RParen in
+  (parser, Ast.QuoteExpression exp)
+
+and parse_unquote_expression (parser : t) : t * Ast.expression =
+  let parser = advance parser in
+  let parser, exp = parse_expression parser least_precedence in
+  let parser = peek_advance parser Token.RParen in
+  (parser, Ast.UnquoteExpression exp)
 
 and parse_index_expression (parser : t) (left : Ast.expression) :
     t * Ast.expression =

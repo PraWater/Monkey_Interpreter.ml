@@ -14,6 +14,7 @@ Implemented by following the book [Writing an Interpreter in Go](https://interpr
 - Built-in functions
 - Recursion
 - Single line comments
+- Macros
 
 ## REPL
 
@@ -76,6 +77,23 @@ sum([1, 2, 3, 4, 5]);
 
 # Output
 15
+```
+
+### Macro - unless
+
+```
+let unless = macro(condition, consequence, alternative) {
+    quote(if (!(unquote(condition))) {
+        unquote(consequence);
+    } else {
+        unquote(alternative);
+    });
+};
+
+unless(10 > 5, puts("not greater"), puts("greater"));
+
+# Output
+greater
 ```
 
 ## TODO

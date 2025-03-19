@@ -34,6 +34,7 @@ type t =
   | If
   | Else
   | Return
+  | Macro
 
 let to_string (token : t) =
   match token with
@@ -67,6 +68,7 @@ let to_string (token : t) =
   | If -> "If\n"
   | Else -> "Else\n"
   | Return -> "Return\n"
+  | Macro -> "Macro\n"
   | Eof -> "Eof\n"
 
 let to_value (token : t) =
@@ -101,4 +103,5 @@ let to_value (token : t) =
   | If -> "if"
   | Else -> "else"
   | Return -> "return"
+  | Macro -> "macro"
   | Eof -> "Eof\n"

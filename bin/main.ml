@@ -5,6 +5,8 @@
 (*print_endline (Parser.show par);*)
 (*let _, prog = Parser.parse_program par in*)
 (*let env = Env.new_env in*)
+(*let prog, env = Evaluator.define_macros prog env in*)
+(*let prog = Evaluator.expand_macros prog env in*)
 (*let obj, _ = Evaluator.eval prog env in*)
 (*print_endline (Object.inspect obj)*)
 let rec repl (env : Env.t) : Env.t =
@@ -13,6 +15,8 @@ let rec repl (env : Env.t) : Env.t =
   let lex = Lexer.init input in
   let par = Parser.init lex in
   let _, prog = Parser.parse_program par in
+  let prog, env = Evaluator.define_macros prog env in
+  let prog = Evaluator.expand_macros prog env in
   let obj, env = Evaluator.eval prog env in
   let () = print_string (Object.inspect obj) in
   repl env

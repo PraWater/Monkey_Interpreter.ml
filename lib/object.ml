@@ -16,7 +16,9 @@ type t =
     }
   | ReturnValue of t
   | Function of { parameters : Ast.expression list; body : Ast.statement }
+  | Macro of { parameters : Ast.expression list; body : Ast.statement }
   | Builtin of builtin_function
+  | Quote of Ast.expression
   | Null
 
 and builtin_function = Len | First | Last | Rest | Push | Puts
@@ -66,8 +68,17 @@ let rec inspect (obj : t) =
       in
       let params = sub_if_longer_than params 2 in
       "fn(" ^ params ^ ")" ^ Ast.stm_to_string body ^ "\n"
+  | Macro { parameters; body } ->
+      let params =
+        List.fold_left
+          (fun acc x -> acc ^ Ast.exp_to_string x ^ ", ")
+          "" parameters
+      in
+      let params = sub_if_longer_than params 2 in
+      "macro(" ^ params ^ ")" ^ Ast.stm_to_string body ^ "\n"
   | Builtin _ -> "Builtin function\n"
-  | Null -> "null\n"
+  | Quote exp -> "Quote( " ^ Ast.exp_to_string exp ^ " )\n"
+  | Null -> ""
 
 and get_builtin (name : string) : t option =
   match name with
@@ -78,3 +89,11 @@ and get_builtin (name : string) : t option =
   | "push" -> Some (Builtin Push)
   | "puts" -> Some (Builtin Puts)
   | _ -> None
+
+and object_to_ast_expression (obj : t) : Ast.expression =
+  match obj with
+  | Integer value -> Ast.IntLiteral value
+  | String value -> Ast.StringLiteral value
+  | Boolean value -> Ast.BoolLiteral value
+  | Quote exp -> exp
+  | _ -> failwith ("object to ast conversion error for : " ^ inspect obj)

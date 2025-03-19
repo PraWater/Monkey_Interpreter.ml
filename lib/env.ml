@@ -15,3 +15,8 @@ let rec get (key : string) (env : t) : Object.t option =
 
 let set (key : string) (value : Object.t) (env : t) : t =
   { env with store = StringMap.add key value env.store }
+
+let env_to_string (env : t) : string =
+  StringMap.fold
+    (fun key value acc -> acc ^ key ^ " : " ^ Object.inspect value)
+    env.store ""

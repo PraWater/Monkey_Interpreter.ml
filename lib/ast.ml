@@ -24,8 +24,11 @@ and expression =
       alternative : statement;
     }
   | FunctionLiteral of { parameters : expression list; body : statement }
+  | MacroLiteral of { parameters : expression list; body : statement }
   | Call of { fn : expression; arguments : expression list }
   | IndexExpression of { left : expression; index : expression }
+  | QuoteExpression of expression
+  | UnquoteExpression of expression
 
 and program = { statements : statement list }
 
@@ -84,6 +87,12 @@ and exp_to_string (exp : expression) : string =
       in
       let params = sub_if_longer_than params 2 in
       "fn(" ^ params ^ ")" ^ stm_to_string body
+  | MacroLiteral { parameters; body } ->
+      let params =
+        List.fold_left (fun acc x -> acc ^ exp_to_string x ^ ", ") "" parameters
+      in
+      let params = sub_if_longer_than params 2 in
+      "macro(" ^ params ^ ")" ^ stm_to_string body
   | Call { fn; arguments } ->
       let args =
         List.fold_left (fun acc x -> acc ^ exp_to_string x ^ ", ") "(" arguments
@@ -92,6 +101,85 @@ and exp_to_string (exp : expression) : string =
       exp_to_string fn ^ args ^ ")"
   | IndexExpression { left; index } ->
       "(" ^ exp_to_string left ^ "[" ^ exp_to_string index ^ "])"
+  | QuoteExpression exp -> "Quote(" ^ exp_to_string exp ^ ")"
+  | UnquoteExpression exp -> "Unquote(" ^ exp_to_string exp ^ ")"
 
 and prog_to_string (prog : program) : string =
   List.fold_left (fun acc x -> acc ^ stm_to_string x) "" prog.statements
+
+and modify_expression (modify_func : expression -> expression)
+    (exp : expression) : expression =
+  let exp =
+    match exp with
+    | ArrayLiteral exps ->
+        ArrayLiteral (List.map (modify_expression modify_func) exps)
+    | HashLiteral { keys; values } ->
+        HashLiteral
+          {
+            keys = List.map (modify_expression modify_func) keys;
+            values = List.map (modify_expression modify_func) values;
+          }
+    | PrefixExpression { operator; right } ->
+        PrefixExpression
+          { operator; right = modify_expression modify_func right }
+    | InfixExpression { left; operator; right } ->
+        InfixExpression
+          {
+            left = modify_expression modify_func left;
+            operator;
+            right = modify_expression modify_func right;
+          }
+    | IfExpression { condition; consequence; alternative } ->
+        IfExpression
+          {
+            condition = modify_expression modify_func condition;
+            consequence = modify_statement modify_func consequence;
+            alternative = modify_statement modify_func alternative;
+          }
+    | IndexExpression { left; index } ->
+        IndexExpression
+          {
+            left = modify_expression modify_func left;
+            index = modify_expression modify_func index;
+          }
+    | Call { fn; arguments } ->
+        Call
+          {
+            fn = modify_expression modify_func fn;
+            arguments = List.map (modify_expression modify_func) arguments;
+          }
+    | FunctionLiteral { parameters; body } ->
+        FunctionLiteral
+          {
+            parameters = List.map (modify_expression modify_func) parameters;
+            body = modify_statement modify_func body;
+          }
+    | QuoteExpression exp -> QuoteExpression (modify_expression modify_func exp)
+    | UnquoteExpression exp ->
+        UnquoteExpression (modify_expression modify_func exp)
+    | _ -> exp
+  in
+  modify_func exp
+
+and modify_statement (modify_func : expression -> expression) (stm : statement)
+    : statement =
+  match stm with
+  | Let { name; value } ->
+      Let
+        {
+          name = modify_expression modify_func name;
+          value = modify_expression modify_func value;
+        }
+  | Return exp -> Return (modify_expression modify_func exp)
+  | Expression exp -> Expression (modify_expression modify_func exp)
+  | Block stms -> Block (List.map (modify_statement modify_func) stms)
+  | Nil -> Nil
+
+and modify_program (modify_func : expression -> expression) (prog : program) :
+    program =
+  let statements =
+    List.map
+      (function stm -> modify_statement modify_func stm)
+      prog.statements
+  in
+  { statements }
