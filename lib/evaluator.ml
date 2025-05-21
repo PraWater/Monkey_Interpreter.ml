@@ -351,7 +351,15 @@ and expand_macros (prog : Ast.program) (env : Env.t) : Ast.program =
   let modify_func (exp : Ast.expression) : Ast.expression =
     match exp with
     | Ast.Call { fn; arguments } -> (
-        let obj, _ = eval_expression fn env in
+        let obj =
+          match fn with
+          | Ast.MacroLiteral _ -> fst (eval_expression fn env)
+          | Ast.Identifier name -> (
+              match Env.get name env with
+              | Some obj -> obj
+              | None -> Object.Null)
+          | _ -> Object.Null
+        in
         match obj with
         | Object.Macro { parameters; body } -> (
             let arguments =
