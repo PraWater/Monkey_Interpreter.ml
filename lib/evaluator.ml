@@ -2,9 +2,9 @@ let true_object = Object.Boolean true
 let false_object = Object.Boolean false
 let null_object = Object.Null
 
-let rec eval (prog : Ast.program) (env : Env.t) : Object.t * Env.t =
-  let rec r_eval (statements : Ast.statement list) (env : Env.t) :
-      Object.t * Env.t =
+let rec eval (prog : Ast.program) (env : Object.env_t) : Object.t * Object.env_t =
+  let rec r_eval (statements : Ast.statement list) (env : Object.env_t) :
+      Object.t * Object.env_t =
     match statements with
     | [] -> (null_object, env)
     | h :: [] ->
@@ -18,7 +18,7 @@ let rec eval (prog : Ast.program) (env : Env.t) : Object.t * Env.t =
   in
   r_eval prog.statements env
 
-and eval_statement (stm : Ast.statement) (env : Env.t) : Object.t * Env.t =
+and eval_statement (stm : Ast.statement) (env : Object.env_t) : Object.t * Object.env_t =
   match stm with
   | Ast.Expression exp -> eval_expression exp env
   | Ast.Block statements -> eval_block_statement statements env
@@ -27,16 +27,16 @@ and eval_statement (stm : Ast.statement) (env : Env.t) : Object.t * Env.t =
   | Ast.Nil -> (null_object, env)
 
 and eval_let_statement (name : Ast.expression) (value : Ast.expression)
-    (env : Env.t) : Object.t * Env.t =
+    (env : Object.env_t) : Object.t * Object.env_t =
   let name = Ast.exp_to_string name in
   let value, env = eval_expression value env in
-  let env = Env.set name value env in
+  let env = Object.env_set name value env in
   (null_object, env)
 
-and eval_block_statement (statements : Ast.statement list) (env : Env.t) :
-    Object.t * Env.t =
-  let rec r_eval_block (statements : Ast.statement list) (env : Env.t) :
-      Object.t * Env.t =
+and eval_block_statement (statements : Ast.statement list) (env : Object.env_t) :
+    Object.t * Object.env_t =
+  let rec r_eval_block (statements : Ast.statement list) (env : Object.env_t) :
+      Object.t * Object.env_t =
     match statements with
     | [] -> (null_object, env)
     | h :: [] -> eval_statement h env
@@ -48,12 +48,12 @@ and eval_block_statement (statements : Ast.statement list) (env : Env.t) :
   in
   r_eval_block statements env
 
-and eval_return_statement (exp : Ast.expression) (env : Env.t) :
-    Object.t * Env.t =
+and eval_return_statement (exp : Ast.expression) (env : Object.env_t) :
+    Object.t * Object.env_t =
   let result, env = eval_expression exp env in
   (Object.ReturnValue result, env)
 
-and eval_expression (exp : Ast.expression) (env : Env.t) : Object.t * Env.t =
+and eval_expression (exp : Ast.expression) (env : Object.env_t) : Object.t * Object.env_t =
   match exp with
   | Ast.IntLiteral value -> (Object.Integer value, env)
   | Ast.BoolLiteral value -> (bool_to_boolean_object value, env)
@@ -70,10 +70,10 @@ and eval_expression (exp : Ast.expression) (env : Env.t) : Object.t * Env.t =
       eval_if_expression condition consequence alternative env
   | Ast.Identifier name -> (eval_identifier name env, env)
   | Ast.FunctionLiteral { parameters; body } ->
-      (Object.Function { parameters; body }, env)
+    (Object.Function { parameters; body; env }, env)
   | Ast.Call { fn; arguments } -> apply_function fn arguments env
   | Ast.QuoteExpression exp ->
-      let modify_func (env : Env.t) (exp : Ast.expression) : Ast.expression =
+      let modify_func (env : Object.env_t) (exp : Ast.expression) : Ast.expression =
         match exp with
         | Ast.UnquoteExpression exp ->
             let obj, _ = eval_expression exp env in
@@ -89,12 +89,12 @@ and eval_expression (exp : Ast.expression) (env : Env.t) : Object.t * Env.t =
 and bool_to_boolean_object (value : bool) : Object.t =
   if value then true_object else false_object
 
-and eval_array_literal (exps : Ast.expression list) (env : Env.t) : Object.t =
+and eval_array_literal (exps : Ast.expression list) (env : Object.env_t) : Object.t =
   let elems = List.map (function exp -> fst (eval_expression exp env)) exps in
   Object.Array elems
 
 and eval_hash_literal (keys : Ast.expression list)
-    (values : Ast.expression list) (env : Env.t) : Object.t =
+    (values : Ast.expression list) (env : Object.env_t) : Object.t =
   let rec r_eval_hash_literal (keys : Object.t list) (values : Object.t list)
       (hash : Object.t) : Object.t =
     match (keys, values, hash) with
@@ -131,23 +131,23 @@ and eval_hash_literal (keys : Ast.expression list)
   in
   r_eval_hash_literal keys values hash
 
-and eval_bang_expression (right : Ast.expression) (env : Env.t) :
-    Object.t * Env.t =
+and eval_bang_expression (right : Ast.expression) (env : Object.env_t) :
+    Object.t * Object.env_t =
   let right, env = eval_expression right env in
   if right = true_object then (false_object, env)
   else if right = false_object then (true_object, env)
   else if right = null_object then (true_object, env)
   else failwith ("Unexpected for bang operator: " ^ Object.inspect right)
 
-and eval_minus_expression (right : Ast.expression) (env : Env.t) :
-    Object.t * Env.t =
+and eval_minus_expression (right : Ast.expression) (env : Object.env_t) :
+    Object.t * Object.env_t =
   let right, env = eval_expression right env in
   match right with
   | Object.Integer value -> (Object.Integer (-value), env)
   | _ -> failwith ("Unexpected for minus operator: " ^ Object.inspect right)
 
 and eval_infix_expression (operator : string) (left : Ast.expression)
-    (right : Ast.expression) (env : Env.t) : Object.t * Env.t =
+    (right : Ast.expression) (env : Object.env_t) : Object.t * Object.env_t =
   let left, env = eval_expression left env in
   let right, env = eval_expression right env in
   let result =
@@ -169,25 +169,25 @@ and eval_infix_expression (operator : string) (left : Ast.expression)
   (result, env)
 
 and eval_if_expression (condition : Ast.expression)
-    (consequence : Ast.statement) (alternative : Ast.statement) (env : Env.t) :
-    Object.t * Env.t =
+    (consequence : Ast.statement) (alternative : Ast.statement) (env : Object.env_t) :
+    Object.t * Object.env_t =
   let condition, env = eval_expression condition env in
   if condition != null_object && condition != false_object then
     eval_statement consequence env
   else eval_statement alternative env
 
-and eval_identifier (name : string) (env : Env.t) : Object.t =
-  match (Env.get name env, Object.get_builtin name) with
+and eval_identifier (name : string) (env : Object.env_t) : Object.t =
+  match (Object.env_get name env, Object.get_builtin name) with
   | Some obj, _ -> obj
   | _, Some builtin -> builtin
   | None, None -> failwith (name ^ " not found in env and builtins")
 
 and apply_function (fn : Ast.expression) (arguments : Ast.expression list)
-    (env : Env.t) : Object.t * Env.t =
+    (env : Object.env_t) : Object.t * Object.env_t =
   let fn_obj, env = eval_expression fn env in
   match fn_obj with
-  | Object.Function { body; parameters } ->
-      let extended_env = extend_function_env parameters arguments env in
+  | Object.Function { body; parameters; env = f_env} ->
+      let extended_env = extend_function_env parameters arguments f_env in
       let evaluated = fst (eval_statement body extended_env) in
       (unwrap_return_value evaluated, env)
   | Object.Builtin blt -> (
@@ -201,10 +201,10 @@ and apply_function (fn : Ast.expression) (arguments : Ast.expression list)
   | _ -> failwith (Ast.exp_to_string fn ^ " not a function")
 
 and extend_function_env (parameters : Ast.expression list)
-    (arguments : Ast.expression list) (env : Env.t) : Env.t =
-  let extended_env = Env.new_enclosed_env env in
+    (arguments : Ast.expression list) (env : Object.env_t) : Object.env_t =
+  let extended_env = Object.new_enclosed_env env in
   let rec r_extend (parameters : Ast.expression list)
-      (arguments : Ast.expression list) (extended_env : Env.t) : Env.t =
+      (arguments : Ast.expression list) (extended_env : Object.env_t) : Object.env_t =
     match (parameters, arguments) with
     | [], [] -> extended_env
     | h1 :: t1, h2 :: t2 ->
@@ -214,7 +214,7 @@ and extend_function_env (parameters : Ast.expression list)
           | _ -> failwith (Ast.exp_to_string h1 ^ " is not Identifier")
         in
         let argument, _ = eval_expression h2 env in
-        let extended_env = Env.set parameter argument extended_env in
+        let extended_env = Object.env_set parameter argument extended_env in
         r_extend t1 t2 extended_env
     | _, _ ->
         failwith "Number of parameters and number of arguments are not equal"
@@ -224,7 +224,7 @@ and extend_function_env (parameters : Ast.expression list)
 and unwrap_return_value (obj : Object.t) : Object.t =
   match obj with Object.ReturnValue value -> value | _ -> obj
 
-and apply_len (arguments : Ast.expression list) (env : Env.t) : Object.t * Env.t
+and apply_len (arguments : Ast.expression list) (env : Object.env_t) : Object.t * Object.env_t
     =
   if List.length arguments = 1 then
     let arg = List.nth arguments 0 in
@@ -238,8 +238,8 @@ and apply_len (arguments : Ast.expression list) (env : Env.t) : Object.t * Env.t
       ("Wrong number of arguments for len: "
       ^ string_of_int (List.length arguments))
 
-and apply_first (arguments : Ast.expression list) (env : Env.t) :
-    Object.t * Env.t =
+and apply_first (arguments : Ast.expression list) (env : Object.env_t) :
+    Object.t * Object.env_t =
   if List.length arguments = 1 then
     let arg = List.nth arguments 0 in
     (eval_index_expression arg (Ast.IntLiteral 0) env, env)
@@ -248,8 +248,8 @@ and apply_first (arguments : Ast.expression list) (env : Env.t) :
       ("Wrong number of arguments for first: "
       ^ string_of_int (List.length arguments))
 
-and apply_last (arguments : Ast.expression list) (env : Env.t) :
-    Object.t * Env.t =
+and apply_last (arguments : Ast.expression list) (env : Object.env_t) :
+    Object.t * Object.env_t =
   if List.length arguments = 1 then
     let arg = List.nth arguments 0 in
     let arg_obj, _ = eval_expression arg env in
@@ -261,8 +261,8 @@ and apply_last (arguments : Ast.expression list) (env : Env.t) :
       ("Wrong number of arguments for last: "
       ^ string_of_int (List.length arguments))
 
-and apply_rest (arguments : Ast.expression list) (env : Env.t) :
-    Object.t * Env.t =
+and apply_rest (arguments : Ast.expression list) (env : Object.env_t) :
+    Object.t * Object.env_t =
   if List.length arguments = 1 then
     let arg = List.nth arguments 0 in
     let arg_obj, _ = eval_expression arg env in
@@ -274,8 +274,8 @@ and apply_rest (arguments : Ast.expression list) (env : Env.t) :
       ("Wrong number of arguments for rest: "
       ^ string_of_int (List.length arguments))
 
-and apply_push (arguments : Ast.expression list) (env : Env.t) :
-    Object.t * Env.t =
+and apply_push (arguments : Ast.expression list) (env : Object.env_t) :
+    Object.t * Object.env_t =
   if List.length arguments = 2 then
     let arr = List.nth arguments 0 in
     let arr_obj, _ = eval_expression arr env in
@@ -289,10 +289,10 @@ and apply_push (arguments : Ast.expression list) (env : Env.t) :
       ("Wrong number of arguments for push: "
       ^ string_of_int (List.length arguments))
 
-and apply_puts (arguments : Ast.expression list) (env : Env.t) :
-    Object.t * Env.t =
-  let rec r_apply_puts (arguments : Object.t list) (env : Env.t) :
-      Object.t * Env.t =
+and apply_puts (arguments : Ast.expression list) (env : Object.env_t) :
+    Object.t * Object.env_t =
+  let rec r_apply_puts (arguments : Object.t list) (env : Object.env_t) :
+      Object.t * Object.env_t =
     match arguments with
     | [] -> (null_object, env)
     | h :: t ->
@@ -305,7 +305,7 @@ and apply_puts (arguments : Ast.expression list) (env : Env.t) :
   r_apply_puts arguments env
 
 and eval_index_expression (arr : Ast.expression) (index : Ast.expression)
-    (env : Env.t) : Object.t =
+    (env : Object.env_t) : Object.t =
   let arr_obj, _ = eval_expression arr env in
   let index_obj, _ = eval_expression index env in
   match (arr_obj, index_obj) with
@@ -329,9 +329,9 @@ and eval_index_expression (arr : Ast.expression) (index : Ast.expression)
       failwith ("Index is not supported: " ^ Ast.exp_to_string index)
   | _, _ -> failwith ("Index not supported for: " ^ Ast.exp_to_string arr)
 
-and define_macros (prog : Ast.program) (env : Env.t) : Ast.program * Env.t =
-  let rec r_define_macros (stms : Ast.statement list) (env : Env.t) :
-      Ast.statement list * Env.t =
+and define_macros (prog : Ast.program) (env : Object.env_t) : Ast.program * Object.env_t =
+  let rec r_define_macros (stms : Ast.statement list) (env : Object.env_t) :
+      Ast.statement list * Object.env_t =
     match stms with
     | h :: t -> (
         let stms, env = r_define_macros t env in
@@ -339,7 +339,7 @@ and define_macros (prog : Ast.program) (env : Env.t) : Ast.program * Env.t =
         | Ast.Let { name; value = Ast.MacroLiteral { parameters; body } } ->
             let name = Ast.exp_to_string name in
             let macro_obj = Object.Macro { parameters; body } in
-            let env = Env.set name macro_obj env in
+            let env = Object.env_set name macro_obj env in
             (stms, env)
         | _ -> (h :: stms, env))
     | [] -> (stms, env)
@@ -347,7 +347,7 @@ and define_macros (prog : Ast.program) (env : Env.t) : Ast.program * Env.t =
   let stms, env = r_define_macros prog.statements env in
   (Ast.{ statements = stms }, env)
 
-and expand_macros (prog : Ast.program) (env : Env.t) : Ast.program =
+and expand_macros (prog : Ast.program) (env : Object.env_t) : Ast.program =
   let modify_func (exp : Ast.expression) : Ast.expression =
     match exp with
     | Ast.Call { fn; arguments } -> (
@@ -355,7 +355,7 @@ and expand_macros (prog : Ast.program) (env : Env.t) : Ast.program =
           match fn with
           | Ast.MacroLiteral _ -> fst (eval_expression fn env)
           | Ast.Identifier name -> (
-              match Env.get name env with
+              match Object.env_get name env with
               | Some obj -> obj
               | None -> Object.Null)
           | _ -> Object.Null
@@ -376,10 +376,10 @@ and expand_macros (prog : Ast.program) (env : Env.t) : Ast.program =
   Ast.modify_program modify_func prog
 
 and extend_macro_env (parameters : Ast.expression list)
-    (arguments : Object.t list) (env : Env.t) =
-  let extended_env = Env.new_enclosed_env env in
+    (arguments : Object.t list) (env : Object.env_t) =
+  let extended_env = Object.new_enclosed_env env in
   let rec r_extend (parameters : Ast.expression list)
-      (arguments : Object.t list) (extended_env : Env.t) : Env.t =
+      (arguments : Object.t list) (extended_env : Object.env_t) : Object.env_t =
     match (parameters, arguments) with
     | [], [] -> extended_env
     | h1 :: t1, h2 :: t2 ->
@@ -388,7 +388,7 @@ and extend_macro_env (parameters : Ast.expression list)
           | Ast.Identifier name -> name
           | _ -> failwith (Ast.exp_to_string h1 ^ " is not Identifier")
         in
-        let extended_env = Env.set parameter h2 extended_env in
+        let extended_env = Object.env_set parameter h2 extended_env in
         r_extend t1 t2 extended_env
     | _, _ ->
         failwith "Number of parameters and number of arguments are not equal"

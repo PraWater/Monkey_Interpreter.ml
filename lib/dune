@@ -1,1 +1,1 @@
-(library (name interpreter) (wrapped false) (modules lexer token parser ast object evaluator env))
+(library (name interpreter) (wrapped false) (modules lexer token parser ast object evaluator))

@@ -11,6 +11,7 @@ Implemented by following the book [Writing an Interpreter in Go](https://interpr
 - Arithmetic expressions
 - Let statements
 - First-class and higher-order functions
+- Closures
 - Built-in functions
 - Recursion
 - Single line comments
@@ -96,11 +97,27 @@ unless(10 > 5, puts("not greater"), puts("greater"));
 greater
 ```
 
+### Closure - newAdder
+
+```
+let newAdder = fn(x) {
+    fn(y) { x + y };
+};
+
+let addTwo = newAdder(2);
+let addThree = newAdder(3);
+
+[addTwo(2), addThree(3)];
+
+# Output
+[4, 6]
+```
+
 ## TODO
 
+- [x] Closures
 - [ ] Errors like in the book
 - [ ] Tests?
-- [ ] Closures
 - [ ] Read from a file
 
 ## Resources Used

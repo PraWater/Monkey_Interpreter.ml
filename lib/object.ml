@@ -15,20 +15,41 @@ type t =
       values : t list;
     }
   | ReturnValue of t
-  | Function of { parameters : Ast.expression list; body : Ast.statement }
+  | Function of { parameters : Ast.expression list; body : Ast.statement; env : env_t}
   | Macro of { parameters : Ast.expression list; body : Ast.statement }
   | Builtin of builtin_function
   | Quote of Ast.expression
   | Null
 
+and env_t = { store : t StringMap.t; outer : env_t option }
+
 and builtin_function = Len | First | Last | Rest | Push | Puts
 
-let sub_if_longer_than (str : string) (length : int) : string =
+let (new_env : env_t) = { store = StringMap.empty; outer = None }
+
+let new_enclosed_env (outer : env_t) : env_t =
+  { store = StringMap.empty; outer = Some outer }
+
+let rec env_get (key : string) (env : env_t) : t option =
+  match (StringMap.find_opt key env.store, env.outer) with
+  | Some value, _ -> Some value
+  | None, Some out -> env_get key out
+  | None, None -> None
+
+and env_set (key : string) (value : t) (env : env_t) : env_t =
+  { env with store = StringMap.add key value env.store }
+
+and env_to_string (env : env_t) : string =
+  StringMap.fold
+    (fun key value acc -> acc ^ key ^ " : " ^ inspect value)
+    env.store ""
+
+and sub_if_longer_than (str : string) (length : int) : string =
   if String.length str >= length then
     String.sub str 0 (String.length str - length)
   else str
 
-let rec inspect (obj : t) =
+and inspect (obj : t) =
   match obj with
   | Integer value -> string_of_int value ^ "\n"
   | Boolean value -> string_of_bool value ^ "\n"
@@ -60,7 +81,7 @@ let rec inspect (obj : t) =
       in
       "{ " ^ r_hash_string keys values "" ^ " }\n"
   | ReturnValue obje -> inspect obje
-  | Function { parameters; body } ->
+  | Function { parameters; body; _ } ->
       let params =
         List.fold_left
           (fun acc x -> acc ^ Ast.exp_to_string x ^ ", ")
